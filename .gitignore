@@ -4,3 +4,10 @@ __pycache__/
 .ipynb_checkpoints/
 .DS_Store
 data/raw/
+.gitignore.save
+*.docx#
+~$*
+notebooks/tempCodeRunnerFile.ipynb
+.gitignore.save
+*.docx#
+notebooks/tempCodeRunnerFile.ipynb
