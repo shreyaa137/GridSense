@@ -4,6 +4,7 @@ from datetime import datetime
 import joblib
 import pandas as pd
 import holidays
+import requests
 
 app = FastAPI()
 
@@ -16,6 +17,15 @@ typical_stats = pd.read_parquet('../data/processed/typical_stats.parquet')
 merged = pd.read_parquet('../data/processed/merged.parquet')
 
 IN_HOLIDAYS = holidays.India()
+
+CITIES = {
+    'National':      (28.61, 77.21),  # Delhi
+    'Northern':      (28.61, 77.21),  # Delhi
+    'Western':       (19.08, 72.88),  # Mumbai
+    'Eastern':       (22.57, 88.36),  # Kolkata
+    'Southern':      (13.08, 80.27),  # Chennai
+    'North-Eastern': (26.14, 91.74),  # Guwahati
+}
 
 
 @app.get("/")
@@ -31,6 +41,37 @@ def get_locations():
 class ForecastRequest(BaseModel):
     location: str
     target_datetime: datetime  # ISO format, e.g. "2024-06-15T14:00:00"
+
+
+def fetch_live_weather(location: str, target_dt: datetime) -> tuple[float, float]:
+    lat, lon = CITIES[location]
+    date_str = target_dt.date().isoformat()
+    response = requests.get(
+        "https://api.open-meteo.com/v1/forecast",
+        params={
+            "latitude": lat,
+            "longitude": lon,
+            "hourly": "temperature_2m,relative_humidity_2m",
+            "start_date": date_str,
+            "end_date": date_str,
+            "timezone": "auto",
+        },
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise HTTPException(status_code=502, detail="Weather forecast service unavailable")
+
+    data = response.json()
+    hourly_times = data["hourly"]["time"]
+    target_iso = target_dt.strftime("%Y-%m-%dT%H:00")
+
+    if target_iso not in hourly_times:
+        raise HTTPException(status_code=400, detail="Requested datetime is outside Open-Meteo's forecast range")
+
+    idx = hourly_times.index(target_iso)
+    temperature = data["hourly"]["temperature_2m"][idx]
+    humidity = data["hourly"]["relative_humidity_2m"][idx]
+    return temperature, humidity
 
 
 def build_features(location: str, target_dt: datetime) -> dict:
@@ -50,13 +91,12 @@ def build_features(location: str, target_dt: datetime) -> dict:
     ]
     if stats_row.empty:
         raise HTTPException(status_code=404, detail="No historical stats for this location/hour/day_of_week combo")
-    historical_avg_load = stats_row['mean'].values[0]  # CHECK THIS: confirm column name matches typical_stats.parquet
+    historical_avg_load = stats_row['mean'].values[0]
 
-    # temperature/humidity: historical if date is in range, else needs Open-Meteo forecast call
+    # temperature/humidity: historical if date is in range, else live Open-Meteo forecast
     is_future = target_dt.date() > merged['datetime'].max().date()
     if is_future:
-        # TODO: call Open-Meteo forecast API for this location's proxy city
-        raise HTTPException(status_code=501, detail="Future-date forecasting (live weather) not yet implemented")
+        temperature, humidity = fetch_live_weather(location, target_dt)
     else:
         weather_row = merged[
             (merged['location'] == location) &
@@ -91,6 +131,7 @@ def forecast(req: ForecastRequest):
         "target_datetime": req.target_datetime.isoformat(),
         "predicted_demand_gw": round(float(prediction), 2)
     }
+
 
 class WhatifRequest(BaseModel):
     location: str
@@ -131,6 +172,7 @@ def whatif(req: WhatifRequest):
         "change_gw": round(float(new_pred - original_pred), 2),
     }
 
+
 class ExplainRequest(BaseModel):
     location: str
     target_datetime: datetime
@@ -160,6 +202,7 @@ def explain(req: ExplainRequest):
         "predicted_demand_gw": round(float(prediction), 2),
         "top_features": top_features,
     }
+
 
 @app.get("/anomaly")
 def anomaly(location: str, target_datetime: datetime, threshold: float = 2.0):
