@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getWhatif } from './api'
+import Panel from './Panel'
+
+const HAZARD = '#E8622C'
+const SIGNAL = '#D1373F'
+const INK = '#1B2A4A'
+const INK_SOFT = '#5B6B84'
+const PAPER_LINE = '#D8E0E7'
 
 function WhatifPanel({ location, date, hour }) {
   const [feature, setFeature] = useState('temperature')
@@ -9,7 +16,6 @@ function WhatifPanel({ location, date, hour }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // reset delta and result when the user picks a different hour
   useEffect(() => {
     setDelta(0)
     setResult(null)
@@ -29,39 +35,41 @@ function WhatifPanel({ location, date, hour }) {
   }
 
   if (hour === null) {
-    return <p className="text-slate-500 mt-6">Select an hour above to try a what-if simulation.</p>
+    return (
+      <Panel title="what-if simulation">
+        <p className="text-ink-soft font-mono text-sm">select an hour above to try a simulation</p>
+      </Panel>
+    )
   }
 
   const chartData = result
     ? [
-        { name: 'Original', demand: result.original_prediction_gw },
-        { name: 'Modified', demand: result.new_prediction_gw },
+        { name: 'original', demand: result.original_prediction_gw },
+        { name: 'modified', demand: result.new_prediction_gw },
       ]
     : []
 
   return (
-    <div className="mt-8">
-      <h2 className="text-xl font-semibold mb-3">What-If Simulation — Hour {hour}</h2>
-
+    <Panel title="what-if simulation" meta={`hour ${hour}`}>
       <div className="flex flex-wrap items-center gap-4 mb-4">
         <select
           value={feature}
           onChange={(e) => setFeature(e.target.value)}
-          className="bg-slate-800 border border-slate-700 rounded px-3 py-2"
+          className="bg-paper border border-ink/40 px-3 py-2 font-display focus:border-hazard outline-none"
         >
-          <option value="temperature">Temperature</option>
-          <option value="humidity">Humidity</option>
-          <option value="is_holiday">Holiday flag</option>
+          <option value="temperature">temperature</option>
+          <option value="humidity">humidity</option>
+          <option value="is_holiday">holiday flag</option>
         </select>
 
         {feature === 'is_holiday' ? (
           <select
             value={delta}
             onChange={(e) => setDelta(Number(e.target.value))}
-            className="bg-slate-800 border border-slate-700 rounded px-3 py-2"
+            className="bg-paper border border-ink/40 px-3 py-2 font-display focus:border-hazard outline-none"
           >
-            <option value={1}>Make it a holiday</option>
-            <option value={-1}>Make it a normal day</option>
+            <option value={1}>make it a holiday</option>
+            <option value={-1}>make it a normal day</option>
           </select>
         ) : (
           <div className="flex items-center gap-2">
@@ -71,9 +79,9 @@ function WhatifPanel({ location, date, hour }) {
               max={10}
               value={delta}
               onChange={(e) => setDelta(Number(e.target.value))}
-              className="w-48"
+              className="w-48 accent-hazard"
             />
-            <span className="w-16 text-center">
+            <span className="w-16 text-center font-mono text-sm">
               {delta > 0 ? `+${delta}` : delta}
               {feature === 'temperature' ? '°C' : '%'}
             </span>
@@ -83,35 +91,35 @@ function WhatifPanel({ location, date, hour }) {
         <button
           onClick={runWhatif}
           disabled={loading}
-          className="bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 rounded px-4 py-2 font-medium"
+          className="bg-hazard text-paper border border-ink px-4 py-2 font-display font-semibold hover:bg-ink disabled:bg-ink-soft transition-colors"
         >
-          {loading ? 'Running...' : 'Run Simulation'}
+          {loading ? 'running...' : 'run simulation'}
         </button>
       </div>
 
-      {error && <p className="text-red-400">{error}</p>}
+      {error && <p className="text-signal font-mono text-sm">{error}</p>}
 
       {result && (
         <div>
-          <p className="mb-3 text-slate-300">
-            {result.change_gw >= 0 ? 'Demand increases by ' : 'Demand decreases by '}
-            <span className={result.change_gw >= 0 ? 'text-orange-400 font-semibold' : 'text-sky-400 font-semibold'}>
+          <p className="mb-3 font-mono text-sm text-ink-soft">
+            {result.change_gw >= 0 ? 'demand increases by ' : 'demand decreases by '}
+            <span className={result.change_gw >= 0 ? 'text-signal font-semibold' : 'text-hazard font-semibold'}>
               {Math.abs(result.change_gw)} GW
             </span>
             {' '}({result.original_prediction_gw} → {result.new_prediction_gw} GW)
           </p>
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={180}>
             <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="name" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip contentStyle={{ backgroundColor: '#1e293b', border: 'none' }} />
-              <Bar dataKey="demand" fill="#38bdf8" />
+              <CartesianGrid stroke={PAPER_LINE} />
+              <XAxis dataKey="name" stroke={INK_SOFT} tick={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} />
+              <YAxis stroke={INK_SOFT} tick={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} />
+              <Tooltip contentStyle={{ backgroundColor: '#EFF3F6', border: `1px solid ${INK}`, borderRadius: 0, fontFamily: 'JetBrains Mono', fontSize: 12 }} />
+              <Bar dataKey="demand" fill={HAZARD} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       )}
-    </div>
+    </Panel>
   )
 }
 
