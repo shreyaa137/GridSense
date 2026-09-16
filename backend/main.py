@@ -5,8 +5,17 @@ import joblib
 import pandas as pd
 import holidays
 import requests
+from datetime import date as date_type
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # load everything once at startup, not per-request
 xgb_model = joblib.load('../models/xgb_demand_model.joblib')
@@ -133,6 +142,34 @@ def forecast(req: ForecastRequest):
     }
 
 
+
+class DayForecastRequest(BaseModel):
+    location: str
+    date: date_type  # e.g. "2024-03-15"
+
+
+@app.post("/forecast/day")
+def forecast_day(req: DayForecastRequest):
+    rows = []
+    for hour in range(24):
+        target_dt = datetime.combine(req.date, datetime.min.time()).replace(hour=hour)
+        features = build_features(req.location, target_dt)
+        rows.append(features)
+
+    batch_df = pd.DataFrame(rows)
+    batch_encoded = pd.get_dummies(batch_df).reindex(columns=feature_cols, fill_value=0)
+    predictions = xgb_model.predict(batch_encoded)
+
+    return {
+        "location": req.location,
+        "date": req.date.isoformat(),
+        "hourly_forecast": [
+            {"hour": h, "predicted_demand_gw": round(float(p), 2)}
+            for h, p in enumerate(predictions)
+        ],
+    }
+
+
 class WhatifRequest(BaseModel):
     location: str
     target_datetime: datetime
@@ -232,4 +269,24 @@ def anomaly(location: str, target_datetime: datetime, threshold: float = 2.0):
         "typical_std_gw": round(float(std), 2),
         "z_score": round(float(z_score), 2),
         "is_anomaly": bool(is_anomaly),
+    }
+
+class DayAnomalyRequest(BaseModel):
+    location: str
+    date: date_type
+    threshold: float = 2.0
+
+
+@app.post("/anomaly/day")
+def anomaly_day(req: DayAnomalyRequest):
+    results = []
+    for hour in range(24):
+        target_dt = datetime.combine(req.date, datetime.min.time()).replace(hour=hour)
+        result = anomaly(req.location, target_dt, req.threshold)
+        results.append(result)
+
+    return {
+        "location": req.location,
+        "date": req.date.isoformat(),
+        "hourly_anomalies": results,
     }
