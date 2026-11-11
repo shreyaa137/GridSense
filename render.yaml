@@ -1,0 +1,21 @@
+# Render blueprint: one Docker web service for the API, one static site for the dashboard.
+# After the first deploy, set the two URLs below to the addresses Render assigns.
+services:
+  - type: web
+    name: gridsense-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: GRIDSENSE_ALLOWED_ORIGINS
+        sync: false   # the dashboard's URL, e.g. https://gridsense.onrender.com
+
+  - type: web
+    name: gridsense
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false   # the API's URL, e.g. https://gridsense-api.onrender.com

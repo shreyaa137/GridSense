@@ -17,5 +17,9 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // this app fetches data in effects and sets loading state there
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

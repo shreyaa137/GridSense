@@ -1,24 +1,30 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @theme {
-  --color-paper: #EFF3F6;
-  --color-paper-line: #D8E0E7;
-  --color-ink: #1B2A4A;
-  --color-ink-soft: #5B6B84;
-  --color-hazard: #E8622C;
-  --color-brass: #C9A227;
-  --color-signal: #D1373F;
-  --font-display: "Archivo", sans-serif;
+  --color-page: #F6F8FB;
+  --color-card: #FFFFFF;
+  --color-ink: #0F172A;
+  --color-ink-soft: #64748B;
+  --color-line: #E2E8F0;
+  --color-primary: #2563EB;
+  --color-primary-dark: #1D4ED8;
+  --color-primary-soft: #DBEAFE;
+  --color-primary-tint: #EFF6FF;
+  --color-highlight: #F59E0B;
+  --color-signal: #DC2626;
+  --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 }
 
 body {
-  background-color: var(--color-paper);
-  background-image:
-    linear-gradient(var(--color-paper-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--color-paper-line) 1px, transparent 1px);
-  background-size: 32px 32px;
+  background-color: var(--color-page);
   color: var(--color-ink);
-  font-family: var(--font-display);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Recharts draws a browser focus box around a chart once it is clicked */
+.recharts-wrapper:focus,
+.recharts-wrapper *:focus {
+  outline: none;
 }

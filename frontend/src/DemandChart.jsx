@@ -1,34 +1,57 @@
 import { useState, useEffect } from 'react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { getLocations, getDayForecast, getDayAnomalies } from './api'
+import { ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { getLocations, getDayForecast, getDayAnomalies, getDaySummary, errorMessage } from './api'
 import ExplainPanel from './ExplainPanel'
 import WhatifPanel from './WhatifPanel'
+import SummaryPanel from './SummaryPanel'
+import AccuracyPanel from './AccuracyPanel'
 import Panel from './Panel'
+import { PRIMARY, PRIMARY_SOFT, HIGHLIGHT, SIGNAL, INK, INK_SOFT, LINE, TICK } from './theme'
 
-const HAZARD = '#E8622C'
-const SIGNAL = '#D1373F'
-const INK = '#1B2A4A'
-const INK_SOFT = '#5B6B84'
-const PAPER_LINE = '#D8E0E7'
+
+const WEATHER_NOTES = {
+  dataset: 'Weather from the training dataset',
+  archive: 'Recorded weather from Open-Meteo',
+  forecast: 'Live weather forecast from Open-Meteo',
+}
+
+function ChartTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const point = payload[0].payload
+  return (
+    <div className="bg-card border border-line rounded-lg shadow-md px-3 py-2 text-xs leading-relaxed">
+      <p className="font-semibold">{String(label).padStart(2, '0')}:00</p>
+      <p>forecast {point.predicted_demand_gw} GW</p>
+      <p className="text-ink-soft">range {point.lower_gw} to {point.upper_gw} GW</p>
+      {point.actual_demand_gw !== null && <p>actual {point.actual_demand_gw} GW</p>}
+      <p className="text-ink-soft">{point.temperature}°C</p>
+      {point.is_anomaly && <p className="text-signal">unusual for this weekday</p>}
+    </div>
+  )
+}
 
 function DemandChart() {
   const [locations, setLocations] = useState([])
   const [location, setLocation] = useState('')
   const [date, setDate] = useState('2024-03-15')
-  const [data, setData] = useState([])
+  const [forecast, setForecast] = useState(null)
+  const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [selectedHour, setSelectedHour] = useState(null)
 
   useEffect(() => {
-    getLocations().then((locs) => {
-      setLocations(locs)
-      setLocation(locs[0])
-    })
+    getLocations()
+      .then((locs) => {
+        setLocations(locs)
+        setLocation(locs.includes('National') ? 'National' : locs[0])
+      })
+      .catch((err) => setError(errorMessage(err, 'Could not load regions.')))
   }, [])
 
   useEffect(() => {
-    if (!location) return
+    if (!location || !date) return
+    let stale = false
 
     setLoading(true)
     setError(null)
@@ -37,41 +60,61 @@ function DemandChart() {
     Promise.all([
       getDayForecast(location, date),
       getDayAnomalies(location, date),
+      getDaySummary(location, date),
     ])
-      .then(([hourlyForecast, hourlyAnomalies]) => {
-        const merged = hourlyForecast.map((point, i) => ({
-          ...point,
-          is_anomaly: hourlyAnomalies[i].is_anomaly,
-        }))
-        setData(merged)
+      .then(([dayForecast, hourlyAnomalies, daySummary]) => {
+        if (stale) return
+        setForecast({
+          ...dayForecast,
+          hours: dayForecast.hourly_forecast.map((point, i) => ({
+            ...point,
+            band: [point.lower_gw, point.upper_gw],
+            is_anomaly: hourlyAnomalies[i].is_anomaly,
+          })),
+        })
+        setSummary(daySummary)
       })
-      .catch(() => setError('Could not load forecast. Check that the backend is running.'))
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (stale) return
+        setForecast(null)
+        setSummary(null)
+        setError(errorMessage(err, 'Could not load forecast.'))
+      })
+      .finally(() => !stale && setLoading(false))
+
+    return () => { stale = true }
   }, [location, date])
 
   const handleChartClick = (chartEvent) => {
     if (chartEvent && chartEvent.activeLabel !== undefined) {
-      setSelectedHour(chartEvent.activeLabel)
+      setSelectedHour(Number(chartEvent.activeLabel))
     }
   }
 
+  const hours = forecast?.hours ?? []
+  const hasActuals = hours.some((h) => h.actual_demand_gw !== null)
+  const ready = !loading && !error && hours.length > 0
+
   return (
-    <div className="min-h-screen p-8 max-w-5xl mx-auto">
-      <header className="border-b-2 border-ink pb-4 mb-8 flex flex-wrap items-end justify-between gap-4">
-        <h1 className="font-display text-3xl font-bold">GridSense</h1>
-        <div className="font-mono text-xs text-ink-soft text-right leading-relaxed">
-          <p>{location || 'loading region'}</p>
+    <div className="min-h-screen p-4 sm:p-8 max-w-5xl mx-auto">
+      <header className="pb-5 mb-6 border-b border-line flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight"><span className="inline-block w-2.5 h-2.5 rounded-full bg-primary mr-2 align-middle"></span>GridSense</h1>
+          <p className="text-xs text-ink-soft mt-1">Hourly electricity demand forecasts for India's grid</p>
+        </div>
+        <div className="text-xs text-ink-soft text-right leading-relaxed">
+          <p>{location || 'Loading region'}</p>
           <p>{date}</p>
         </div>
       </header>
 
       <div className="flex flex-wrap gap-6 mb-8">
         <label className="block">
-          <span className="block font-mono text-xs text-ink-soft mb-1">Region</span>
+          <span className="block text-xs font-medium text-ink-soft mb-1">Region</span>
           <select
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            className="bg-paper border border-ink/40 px-3 py-2 font-display focus:border-hazard outline-none"
+            className="bg-card border border-line px-3 py-2 rounded-lg text-sm focus:border-primary focus:ring-2 focus:ring-primary-soft outline-none"
           >
             {locations.map((loc) => (
               <option key={loc} value={loc}>{loc}</option>
@@ -80,70 +123,85 @@ function DemandChart() {
         </label>
 
         <label className="block">
-          <span className="block font-mono text-xs text-ink-soft mb-1">Date</span>
+          <span className="block text-xs font-medium text-ink-soft mb-1">Date</span>
           <input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="bg-paper border border-ink/40 px-3 py-2 font-display focus:border-hazard outline-none"
+            className="bg-card border border-line px-3 py-2 rounded-lg text-sm focus:border-primary focus:ring-2 focus:ring-primary-soft outline-none"
           />
         </label>
       </div>
 
-      {loading && <p className="text-ink-soft font-mono text-sm">loading forecast...</p>}
-      {error && <p className="text-signal font-mono text-sm">{error}</p>}
+      {loading && <p className="text-ink-soft text-sm">Loading forecast…</p>}
+      {error && <p className="text-signal text-sm">{error}</p>}
 
-      {!loading && !error && data.length > 0 && (
-        <Panel title="24-hour load schedule" meta={`${data.length} points`}>
-          <ResponsiveContainer width="100%" height={380}>
-            <LineChart data={data} onClick={handleChartClick}>
-              <CartesianGrid stroke={PAPER_LINE} />
-              <XAxis dataKey="hour" stroke={INK_SOFT} tick={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} label={{ value: 'hour (click a point)', position: 'insideBottom', offset: -5, fill: INK_SOFT, fontSize: 12 }} />
-              <YAxis stroke={INK_SOFT} tick={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} label={{ value: 'demand (GW)', angle: -90, position: 'insideLeft', fill: INK_SOFT, fontSize: 12 }} />
-              <Tooltip contentStyle={{ backgroundColor: '#EFF3F6', border: `1px solid ${INK}`, borderRadius: 0, fontFamily: 'JetBrains Mono', fontSize: 12 }} />
-              <Line
-                type="monotone"
-                dataKey="predicted_demand_gw"
-                stroke={HAZARD}
-                strokeWidth={2}
-                dot={(props) => {
-                  const { cx, cy, payload } = props
-                  return (
-                    <circle
-                      key={`dot-${payload.hour}`}
-                      cx={cx}
-                      cy={cy}
-                      r={payload.is_anomaly ? 6 : 3}
-                      fill={payload.is_anomaly ? SIGNAL : HAZARD}
-                      stroke={payload.is_anomaly ? SIGNAL : 'none'}
-                      strokeWidth={payload.is_anomaly ? 2 : 0}
-                      cursor="pointer"
-                    />
-                  )
-                }}
-                activeDot={{ r: 6 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+      {ready && (
+        <div className="space-y-8">
+          <SummaryPanel summary={summary} />
 
-          {data.some((d) => d.is_anomaly) && (
-            <p className="text-xs font-mono text-ink-soft mt-2">
-              <span className="inline-block w-2 h-2 bg-signal mr-1"></span>
-              red points mark anomalous demand (z-score beyond threshold)
+          <Panel title="24-hour demand forecast" meta={WEATHER_NOTES[forecast.weather_source]}>
+            <p className="text-xs text-ink-soft mb-3 flex flex-wrap gap-x-5 gap-y-1">
+              <span><span className="inline-block w-4 border-t-2 border-primary align-middle mr-1"></span>forecast</span>
+              <span><span className="inline-block w-4 h-2.5 bg-primary-soft align-middle mr-1"></span>{forecast.band_coverage_pct}% range</span>
+              {hasActuals && (
+                <span><span className="inline-block w-4 border-t-2 border-dashed border-ink align-middle mr-1"></span>actual</span>
+              )}
+              {hours.some((h) => h.is_anomaly) && (
+                <span><span className="inline-block w-2 h-2 rounded-full bg-signal align-middle mr-1"></span>unusual for this weekday</span>
+              )}
             </p>
-          )}
-        </Panel>
-      )}
+            <ResponsiveContainer width="100%" height={380}>
+              <ComposedChart data={hours} onClick={handleChartClick} margin={{ top: 5, right: 5, bottom: 18, left: 0 }}>
+                <CartesianGrid stroke={LINE} />
+                <XAxis dataKey="hour" stroke={LINE} tick={TICK} label={{ value: 'Hour (click a point for details)', position: 'insideBottom', offset: -5, fill: INK_SOFT, fontSize: 12 }} />
+                <YAxis stroke={LINE} tick={TICK} domain={['auto', 'auto']} label={{ value: 'Demand (GW)', angle: -90, position: 'insideLeft', fill: INK_SOFT, fontSize: 12 }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="band" stroke="none" fill={PRIMARY_SOFT} fillOpacity={0.7} isAnimationActive={false} activeDot={false} />
+                {hasActuals && (
+                  <Line type="monotone" dataKey="actual_demand_gw" stroke={INK} strokeWidth={1.5} strokeDasharray="5 4" dot={false} activeDot={false} isAnimationActive={false} />
+                )}
+                <Line
+                  type="monotone"
+                  dataKey="predicted_demand_gw"
+                  stroke={PRIMARY}
+                  strokeWidth={2.5}
+                  isAnimationActive={false}
+                  dot={(props) => {
+                    const { cx, cy, payload } = props
+                    const selected = payload.hour === selectedHour
+                    return (
+                      <circle
+                        key={`dot-${payload.hour}`}
+                        cx={cx}
+                        cy={cy}
+                        r={selected || payload.is_anomaly ? 6 : 3}
+                        fill={payload.is_anomaly ? SIGNAL : selected ? HIGHLIGHT : PRIMARY}
+                        stroke={selected || payload.is_anomaly ? '#FFFFFF' : 'none'}
+                        strokeWidth={selected || payload.is_anomaly ? 2 : 0}
+                        cursor="pointer"
+                      />
+                    )
+                  }}
+                  activeDot={{ r: 6 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+            {forecast.in_training_data && (
+              <p className="text-xs text-ink-soft mt-2">
+                This date is in the training data, so the fit here flatters the model. Held-out accuracy is below.
+              </p>
+            )}
+          </Panel>
 
-      {!loading && !error && data.length > 0 && (
-        <div className="mt-8">
           <ExplainPanel location={location} date={date} hour={selectedHour} />
+          <WhatifPanel location={location} date={date} hour={selectedHour} />
         </div>
       )}
 
-      {!loading && !error && data.length > 0 && (
+      {location && (
         <div className="mt-8">
-          <WhatifPanel location={location} date={date} hour={selectedHour} />
+          <AccuracyPanel location={location} />
         </div>
       )}
     </div>

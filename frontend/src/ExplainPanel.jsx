@@ -2,11 +2,18 @@ import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { getExplanation } from './api'
 import Panel from './Panel'
+import { PRIMARY, INK_SOFT, LINE, TICK, TOOLTIP_STYLE } from './theme'
 
-const HAZARD = '#E8622C'
-const INK = '#1B2A4A'
-const INK_SOFT = '#5B6B84'
-const PAPER_LINE = '#D8E0E7'
+
+const FEATURE_LABELS = {
+  temperature: 'temperature',
+  humidity: 'humidity',
+  hour: 'time of day',
+  day_of_week: 'day of week',
+  month: 'time of year',
+  is_holiday: 'holiday',
+  typical_ratio: 'usual pattern',
+}
 
 function ExplainPanel({ location, date, hour }) {
   const [data, setData] = useState(null)
@@ -22,35 +29,38 @@ function ExplainPanel({ location, date, hour }) {
     setError(null)
 
     getExplanation(location, targetDatetime)
-      .then((result) => setData(result))
+      .then((result) => setData({
+        ...result,
+        top_features: result.top_features.map((f) => ({ ...f, label: FEATURE_LABELS[f.feature] ?? f.feature })),
+      }))
       .catch(() => setError('Could not load explanation.'))
       .finally(() => setLoading(false))
   }, [location, date, hour])
 
   if (hour === null) {
     return (
-      <Panel title="explanation">
-        <p className="text-ink-soft font-mono text-sm">click a point on the chart above to see why the model predicted that value</p>
+      <Panel title="Explanation">
+        <p className="text-ink-soft text-sm">Click a point on the chart to see what drove that forecast.</p>
       </Panel>
     )
   }
 
-  if (loading) return <Panel title="explanation"><p className="text-ink-soft font-mono text-sm">loading...</p></Panel>
-  if (error) return <Panel title="explanation"><p className="text-signal font-mono text-sm">{error}</p></Panel>
+  if (loading) return <Panel title="Explanation"><p className="text-ink-soft text-sm">Loading…</p></Panel>
+  if (error) return <Panel title="Explanation"><p className="text-signal text-sm">{error}</p></Panel>
   if (!data) return null
 
   return (
-    <Panel title="explanation" meta={`hour ${hour}`}>
-      <p className="font-mono text-sm text-ink-soft mb-4">
-        {data.predicted_demand_gw} GW predicted
+    <Panel title="Explanation" meta={`hour ${hour}`}>
+      <p className="text-sm text-ink-soft mb-4">
+        {data.predicted_demand_gw} GW predicted. Bars show each factor's share of the model's adjustment for this hour.
       </p>
       <ResponsiveContainer width="100%" height={230}>
-        <BarChart data={data.top_features} layout="vertical" margin={{ left: 40 }}>
-          <CartesianGrid stroke={PAPER_LINE} />
-          <XAxis type="number" stroke={INK_SOFT} tick={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} label={{ value: '% contribution', position: 'insideBottom', offset: -5, fill: INK_SOFT, fontSize: 12 }} />
-          <YAxis type="category" dataKey="feature" stroke={INK_SOFT} tick={{ fontFamily: 'JetBrains Mono', fontSize: 12 }} width={140} />
-          <Tooltip contentStyle={{ backgroundColor: '#EFF3F6', border: `1px solid ${INK}`, borderRadius: 0, fontFamily: 'JetBrains Mono', fontSize: 12 }} />
-          <Bar dataKey="contribution_pct" fill={HAZARD} />
+        <BarChart data={data.top_features} layout="vertical" margin={{ left: 40, bottom: 16 }}>
+          <CartesianGrid stroke={LINE} />
+          <XAxis type="number" stroke={LINE} tick={TICK} label={{ value: '% contribution', position: 'insideBottom', offset: -5, fill: INK_SOFT, fontSize: 12 }} />
+          <YAxis type="category" dataKey="label" stroke={LINE} tick={TICK} width={140} />
+          <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: '#EFF6FF' }} />
+          <Bar dataKey="contribution_pct" name="contribution %" fill={PRIMARY} radius={[0, 4, 4, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </Panel>
