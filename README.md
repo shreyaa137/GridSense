@@ -2,6 +2,10 @@
 
 Hourly electricity demand forecasting for India's power grid, with explanations of what drives each forecast.
 
+**Live demo: https://gridsense-et9g.onrender.com**
+
+The demo runs on a free plan, so the API sleeps when idle. If the page says it cannot reach the backend, wait a minute and refresh.
+
 GridSense predicts demand in GW for the national grid and its five regions (Northern, Western, Eastern, Southern, North-Eastern). An XGBoost model does the forecasting, SHAP explains it, and a React dashboard shows the result.
 
 ## Features
